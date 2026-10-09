@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metas de Corridas</title>
+<style>
+:root{--bg:#f3f1ec;--card:#fff;--ink:#1c2321;--mut:#6b7570;--ac:#0f6b4f;--ac2:#e8f2ee;--warn:#b4491f;--line:#dcd8cf}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+h2,h3{margin:0 0 .5rem;font-family:Georgia,serif}
+header{background:var(--ink);color:#fff;padding:.8rem 1rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap}
+header h1{font:700 1.2rem Georgia,serif;margin:0}
+nav{display:flex;gap:.3rem;flex-wrap:wrap;padding:.6rem 1rem;background:#e7e3d9}
+nav.sub{background:none;padding:0 0 .6rem}
+nav button{background:none;border:0;padding:.45rem .7rem;border-radius:6px;cursor:pointer;font:inherit;color:var(--ink)}
+nav button.on{background:var(--ac);color:#fff}
+main{max-width:1050px;margin:auto;padding:1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:1rem;margin-bottom:1rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem}
+.big{background:var(--ac2);border-radius:8px;padding:.8rem}
+.big b{display:block;font:700 1.5rem Georgia,serif;color:var(--ac)}
+.big small{color:var(--mut)}
+.big.w b{color:var(--warn)}
+input,select,button,textarea{font:inherit;padding:.45rem;border:1px solid var(--line);border-radius:6px;background:#fff;max-width:100%}
+button.p{background:var(--ac);color:#fff;border-color:var(--ac);cursor:pointer}
+button.d{color:var(--warn);cursor:pointer;background:none;border:0}
+form{display:flex;gap:.5rem;flex-wrap:wrap;align-items:end;margin-bottom:.8rem}
+label{display:flex;flex-direction:column;font-size:.8rem;color:var(--mut);gap:.2rem}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:.35rem .3rem;border-bottom:1px solid var(--line);vertical-align:middle}
+td input,td select{width:100%;min-width:60px;padding:.3rem}
+td.n,th.n{text-align:right}
+.wrap{overflow-x:auto}
+.bar{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin:.4rem 0}
+.bar i{display:block;height:100%;background:var(--ac)}
+.pago{opacity:.55}
+.login{max-width:340px;margin:12vh auto;text-align:center}
+.login input{width:100%;margin:.4rem 0}
+.muted{color:var(--mut);font-size:.85rem}
+details{margin:.3rem 0;width:100%}summary{cursor:pointer;color:var(--ac)}
+details form,details .row{margin-top:.5rem}
+.chk{flex-direction:row;align-items:center;gap:.3rem;color:var(--ink);font-size:.85rem}
+.p6{color:var(--warn);font-weight:700}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const LK='metas99_v2',$=s=>document.querySelector(s);
+const brl=n=>(+n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const today=()=>new Date().toLocaleDateString('sv');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hm=h=>Math.floor(h)+'h'+String(Math.round((h%1)*60)).padStart(2,'0');
+const MESES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const def=()=>({u:0,cfg:{ride:7,hour:35,rph:5},
+  rec:[{id:uid(),d:'Aluguel do carro',unit:925,qty:1,prio:6,t:'ess'},{id:uid(),d:'Combustível',unit:160,qty:3,prio:6,t:'ess'},{id:uid(),d:'Mercado',unit:50,qty:1,prio:4,t:'var'}],
+  exp:[],days:[],goals:[],cols:{date:1,rides:1,val:1,hours:1,vh:1,rh:0}});
+function norm(d){const b=def();d=d||{};delete d.h;
+  const o=Object.assign(b,d);o.cfg=Object.assign(def().cfg,d.cfg);o.cols=Object.assign(def().cols,d.cols);
+  o.exp=(o.exp||[]).map(e=>({unit:e.val||0,qty:1,prio:e.t==='ess'?6:3,...e}));
+  (o.inc||[]).forEach(i=>o.days.push({id:i.id,date:i.date.slice(0,10),rides:i.rides,val:i.val,hours:0,uon:i.plat==='uber_on'?i.val:0}));delete o.inc;return o}
+let S=norm(JSON.parse(localStorage.getItem(LK)||'null'));
+let M=localStorage.m99_month||today().slice(0,7),tab='painel',wk=0;
+let KEY=sessionStorage.k||localStorage.k||'',MODE=KEY?'cloud':(sessionStorage.local?'local':''),tm,st='local';
+// ===== sincronização =====
+const api=(m,b)=>fetch('/api/data',{method:m,headers:{'x-admin-key':KEY,'content-type':'application/json'},body:b?JSON.stringify(b):undefined});
+const STT={ok:'☁ Sincronizado',pend:'☁ Salvando…',err:'⚠ Offline (será reenviado)',local:'Modo local'};
+function setSt(x){st=x;const e=$('#st');if(e)e.textContent=STT[x]}
+function save(){S.u=Date.now();localStorage.setItem(LK,JSON.stringify(S));
+  if(MODE==='cloud'){setSt('pend');clearTimeout(tm);tm=setTimeout(push,700)}}
+async function push(){try{const r=await api('PUT',S);if(r.status===401)return logout();setSt(r.ok?'ok':'err')}catch(e){setSt('err')}}
+async function pull(){const r=await api('GET');if(r.status===401)throw 401;if(!r.ok)throw r.status;
+  const d=await r.json();
+  if(d.empty||(d.u||0)<S.u)await push();
+  else if(d.u>S.u){S=norm(d);localStorage.setItem(LK,JSON.stringify(S))}
+  setSt('ok')}
+function logout(){delete sessionStorage.k;delete sessionStorage.local;delete localStorage.k;KEY='';MODE='';render()}
+window.addEventListener('focus',()=>{if(MODE==='cloud'&&st!=='pend'&&!document.activeElement.matches('input,select,textarea'))pull().then(render).catch(()=>setSt('err'))});
+window.addEventListener('online',()=>MODE==='cloud'&&push());
+function loginView(msg=''){
+  $('#app').innerHTML=`<form class="card login" id="lf" style="display:block"><h2>Metas de Corridas</h2>
+  <p class="muted">Entre com a senha de administrador.</p>
+  <input id="pw" type="password" placeholder="Senha" autocomplete="current-password" autofocus>
+  <label class="chk"><input id="keep" type="checkbox" style="width:auto"> Manter conectado neste aparelho</label>
+  <button class="p" style="width:100%;margin-top:.5rem">Entrar</button>
+  <p class="muted" style="color:var(--warn)">${msg}</p>
+  ${msg.includes('indisponível')?'<button type="button" id="loc">Usar modo local (sem sincronizar)</button>':''}</form>`;
+  $('#lf').addEventListener('submit',async ev=>{ev.preventDefault();
+    KEY=$('#pw').value;const keep=$('#keep').checked;
+    try{await pull();MODE='cloud';(keep?localStorage:sessionStorage).k=KEY;render()}
+    catch(e){KEY='';loginView(e===401?'Senha incorreta.':'Sincronização indisponível (erro '+(e.message||e)+'). Confira a implantação e a variável ADMIN_PASSWORD.')}});
+  const l=$('#loc');if(l)l.onclick=()=>{sessionStorage.local=1;MODE='local';render()};
+}
+// ===== datas e períodos =====
+function weeks(m){const[y,mo]=m.split('-').map(Number),last=new Date(y,mo,0).getDate(),w=[];let s=1;
+  for(let d=1;d<=last;d++){if(new Date(y,mo-1,d).getDay()===6||d===last){w.push({n:w.length+1,s,e:d});s=d+1}}return w}
+const R=()=>{const W=weeks(M);return wk&&W[wk-1]?W[wk-1]:{n:0,s:1,e:W[W.length-1].e}};
+const dnum=d=>+d.slice(8,10);
+const inR=d=>d.startsWith(M)&&dnum(d)>=R().s&&dnum(d)<=R().e;
+const weekOf=d=>{const x=weeks(M).find(w=>dnum(d)>=w.s&&dnum(d)<=w.e);return x?x.n:1};
+function cyc(dt){const d=new Date(dt);d.setHours(d.getHours()-4);d.setDate(d.getDate()-((d.getDay()+6)%7));return d.toLocaleDateString('sv')}
+const mExp=()=>S.exp.filter(e=>e.month===M&&(!wk||e.week==wk));
+const mDays=()=>S.days.filter(d=>inR(d.date));
+const tot=e=>e.unit*e.qty;
+function calc(){const c=S.cfg,ex=mExp(),ds=mDays(),r=R();
+  const pend=ex.filter(e=>!e.paid).reduce((a,e)=>a+tot(e),0),pagas=ex.filter(e=>e.paid).reduce((a,e)=>a+tot(e),0);
+  const abat=ds.reduce((a,d)=>a+(+d.uon||0),0),caixa=ds.reduce((a,d)=>a+(+d.val||0),0)-abat;
+  const saldo=Math.max(0,caixa-pagas),falta=Math.max(0,pend-abat-saldo);
+  const now=new Date(),inside=today().startsWith(M)&&now.getDate()>=r.s&&now.getDate()<=r.e;
+  const dias=inside?r.e-now.getDate()+1:r.e-r.s+1,corr=Math.ceil(falta/c.ride);
+  return{pend,pagas,abat,caixa,saldo,falta,dias,corr,horas:falta/c.hour,rides:ds.reduce((a,d)=>a+(+d.rides||0),0)}}
+const per=()=>wk?`semana ${wk}`:'mês';
+function tabs(){const W=weeks(M);return`<nav class="sub"><button class="${!wk?'on':''}" onclick="wk=0;render()">Mês inteiro</button>${W.map(w=>`<button class="${wk===w.n?'on':''}" onclick="wk=${w.n};render()">Sem ${w.n} (${w.s}${w.e>w.s?'–'+w.e:''})</button>`).join('')}</nav>`}
+// ===== telas =====
+function painel(){const r=calc(),c=S.cfg;
+  const ab=S.days.filter(d=>cyc(d.date+'T12:00')===cyc(new Date())).reduce((a,d)=>a+(+d.uon||0),0);
+  let cum=0;const ex=mExp().filter(e=>!e.paid);
+  const pr=[6,5,4,3,2,1].map(p=>{const v=ex.filter(e=>e.prio==p).reduce((a,e)=>a+tot(e),0);cum+=v;return`<tr><td class="${p==6?'p6':''}">Prioridade ${p}</td><td class="n">${brl(v)}</td><td class="n">${brl(cum)}</td><td class="n">${Math.ceil(cum/c.ride)}</td></tr>`}).join('');
+  return`${tabs()}<div class="card"><h2>Quanto falta (${per()})</h2><div class="grid">
+  <div class="big w"><b>${brl(r.falta)}</b><small>a ganhar</small></div>
+  <div class="big"><b>${r.corr}</b><small>corridas de ${brl(c.ride)}</small></div>
+  <div class="big"><b>${hm(r.horas)}</b><small>de trabalho (${brl(c.hour)}/h)</small></div>
+  <div class="big"><b>${Math.ceil(r.corr/r.dias)}</b><small>corridas por dia (${r.dias} dia${r.dias>1?'s':''})</small></div>
+  <div class="big"><b>${hm(r.horas/r.dias)}</b><small>por dia</small></div></div>
+  <p class="muted">Pendente ${brl(r.pend)} − abatimento Uber ${brl(r.abat)} − saldo em caixa ${brl(r.saldo)}.</p></div>
+  <div class="card"><h3>Por prioridade (pendentes)</h3><div class="wrap"><table><tr><th></th><th class="n">Valor</th><th class="n">Acumulado</th><th class="n">Corridas acumuladas</th></tr>${pr}</table></div></div>
+  <div class="card"><div class="grid"><div class="big"><b>${brl(r.caixa)}</b><small>recebido em caixa</small></div><div class="big"><b>${brl(r.pagas)}</b><small>despesas pagas</small></div><div class="big"><b>${r.rides}</b><small>corridas feitas</small></div><div class="big"><b>${brl(ab)}</b><small>abatimento Uber do ciclo atual (fecha seg. 04h)</small></div></div></div>
+  <div class="card"><h3>Simulador</h3><form onsubmit="return false"><label>Corridas por dia<input id="sc" type="number" value="50" oninput="sim()"></label><label>Valor médio<input id="sv" type="number" step=".5" value="${c.ride}" oninput="sim()"></label></form><div id="so"></div></div>`}
+function sim(){const r=calc(),c=+$('#sc').value||0,v=+$('#sv').value||0,g=c*v;
+  $('#so').innerHTML=`<p>${c} × ${brl(v)} = <b>${brl(g)}/dia</b> (~${hm(c/(S.cfg.rph||1))}). Em ${r.dias} dia(s): <b>${brl(g*r.dias)}</b> — ${g*r.dias>=r.falta?'cobre':'não cobre'} os ${brl(r.falta)} que faltam.</p>`}
+const TIPOS={ess:'Essencial',fix:'Fixa',var:'Variável',div:'Dívida',ant:'Antecipável'};
+const opt=(o,v)=>Object.entries(o).map(([k,l])=>`<option value="${k}" ${k==v?'selected':''}>${l}</option>`).join('');
+const PRIO=Object.fromEntries([6,5,4,3,2,1].map(p=>[p,p==6?'6 – essencial':p]));
+const WKS=()=>Object.fromEntries(weeks(M).map(w=>[w.n,'Sem '+w.n]));
+function despesas(){const l=mExp().sort((a,b)=>b.prio-a.prio||a.week-b.week),T=l.reduce((a,e)=>a+tot(e),0);
+  const ed=(id,f,n)=>`onchange="ed('exp','${id}','${f}',${n?'+':''}this.value)"`;
+  return`${tabs()}<div class="card"><h2>Despesas (${per()})</h2>
+  <form onsubmit="addExp(event)"><label>Descrição<input name="d" required></label><label>Valor unit.<input name="v" type="number" step=".01" required style="width:100px"></label><label>Qtd<input name="q" type="number" value="1" min="1" style="width:70px"></label>
+  <label>Prioridade<select name="p">${opt(PRIO,3)}</select></label><label>Semana<select name="w">${opt(WKS(),wk||1)}</select></label><label>Tipo<select name="t">${opt(TIPOS,'var')}</select></label><label>Limite<input name="l" type="date"></label><button class="p">Adicionar</button></form>
+  <div class="wrap"><table><tr><th>Pago</th><th>Descrição</th><th>Prio.</th><th>Unit.</th><th>Qtd</th><th class="n">Total</th><th>Sem.</th><th>Tipo</th><th>Limite</th><th class="n">Corr.</th><th></th></tr>
+  ${l.map(e=>`<tr class="${e.paid?'pago':''}"><td><input type="checkbox" style="width:auto;min-width:0" ${e.paid?'checked':''} onchange="ed('exp','${e.id}','paid',this.checked)"></td>
+  <td><input value="${esc(e.d)}" ${ed(e.id,'d')}></td><td><select ${ed(e.id,'prio',1)}>${opt(PRIO,e.prio)}</select></td>
+  <td><input type="number" step=".01" value="${e.unit}" ${ed(e.id,'unit',1)}></td><td><input type="number" min="1" value="${e.qty}" ${ed(e.id,'qty',1)}></td><td class="n">${brl(tot(e))}</td>
+  <td><select ${ed(e.id,'week',1)}>${opt(WKS(),e.week)}</select></td><td><select ${ed(e.id,'t')}>${opt(TIPOS,e.t)}</select></td><td><input type="date" value="${e.due||''}" ${ed(e.id,'due')}></td>
+  <td class="n">${Math.ceil(tot(e)/S.cfg.ride)}</td><td><button class="d" onclick="del('exp','${e.id}')">✕</button></td></tr>`).join('')||'<tr><td colspan=11 class="muted">Nenhuma despesa neste período.</td></tr>'}
+  <tr><th colspan=5>Total</th><th class="n">${brl(T)}</th><th colspan=3></th><th class="n">${Math.ceil(T/S.cfg.ride)}</th><th></th></tr></table></div>
+  <p><button class="p" onclick="gerar()">Gerar despesas recorrentes em todas as semanas do mês</button> <span class="muted">(editáveis em Config)</span></p></div>`}
+const COLS=[['date','Dia'],['rides','Corridas'],['val','Valor'],['hours','Horas'],['vh','R$/h'],['rh','Corridas/h'],['start','Início'],['end','Fim'],['c99','Corr. 99'],['cu','Corr. Uber'],['cp','Corr. part.'],['v99','R$ 99'],['vu','R$ Uber'],['vp','R$ part.'],['uon','Uber online'],['p99','Promo 99'],['pu','Promo Uber'],['km','Km'],['obs','Obs.']];
+const cell=(d,k)=>{const h=+d.hours||0;
+  return k=='date'?d.date.split('-').reverse().slice(0,2).join('/'):k=='val'||k=='v99'||k=='vu'||k=='vp'||k=='uon'?(d[k]?brl(d[k]):'–'):k=='hours'?(h?hm(h):'–'):k=='vh'?(h?brl(d.val/h):'–'):k=='rh'?(h?(d.rides/h).toFixed(1):'–'):esc(d[k]||'–')};
+function diario(){const ds=mDays().sort((a,b)=>b.date<a.date?-1:1),cols=COLS.filter(c=>S.cols[c[0]]);
+  const T=ds.reduce((a,d)=>({r:a.r+(+d.rides||0),v:a.v+(+d.val||0),h:a.h+(+d.hours||0)}),{r:0,v:0,h:0}),nd=new Set(ds.map(d=>d.date)).size;
+  const f=(n,l,x='')=>`<label>${l}<input name="${n}" ${x}></label>`;
+  return`${tabs()}<div class="card"><h2>Resumo (${per()})</h2><div class="grid">
+  <div class="big"><b>${T.r}</b><small>corridas em ${nd} dia(s)</small></div><div class="big"><b>${brl(T.v)}</b><small>faturado${nd?' · média '+brl(T.v/nd)+'/dia':''}</small></div>
+  <div class="big"><b>${hm(T.h)}</b><small>dirigidas</small></div><div class="big"><b>${T.h?brl(T.v/T.h):'–'}</b><small>por hora</small></div><div class="big"><b>${T.h?(T.r/T.h).toFixed(1):'–'}</b><small>corridas por hora</small></div></div></div>
+  <div class="card"><h2>Registrar dia</h2><form id="df" onsubmit="addDay(event)">
+  <label>Dia<input name="date" type="date" value="${today()}" required></label>${f('rides','Corridas','type="number" style="width:90px"')}${f('val','Valor total R$','type="number" step=".01" style="width:120px"')}${f('hours','Horas dirigidas','type="number" step=".1" style="width:110px"')}<button class="p">Salvar dia</button>
+  <details><summary>Mais detalhes (opcional)</summary><div class="row" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:end">
+  ${f('start','Início','type="time"')}${f('end','Fim','type="time"')}${f('c99','Corridas 99','type="number" style="width:90px"')}${f('cu','Corridas Uber','type="number" style="width:90px"')}${f('cp','Corridas particular','type="number" style="width:90px"')}
+  ${f('v99','R$ 99','type="number" step=".01" style="width:100px"')}${f('vu','R$ Uber','type="number" step=".01" style="width:100px"')}${f('vp','R$ particular','type="number" step=".01" style="width:100px"')}
+  ${f('uon','Uber online (abatimento)','type="number" step=".01" style="width:120px"')}${f('p99','Promoção 99','placeholder="ex: bônus 20 corridas"')}${f('pu','Promoção Uber')}${f('km','Km rodados','type="number" style="width:90px"')}${f('obs','Observações','style="min-width:220px"')}</div>
+  <p class="muted">Se deixar horas em branco, uso início/fim. Corridas e valor em branco são somados das origens. "Uber online" faz parte do valor total, mas vira abatimento no aluguel.</p></details></form></div>
+  <div class="card"><h3>Dias</h3><details><summary>Colunas visíveis</summary><div class="row" style="display:flex;gap:.8rem;flex-wrap:wrap">${COLS.map(c=>`<label class="chk"><input type="checkbox" style="width:auto" ${S.cols[c[0]]?'checked':''} onchange="S.cols['${c[0]}']=this.checked?1:0;save();render()">${c[1]}</label>`).join('')}</div></details>
+  <div class="wrap"><table><tr>${cols.map(c=>`<th>${c[1]}</th>`).join('')}<th></th></tr>${ds.map(d=>`<tr>${cols.map(c=>`<td>${cell(d,c[0])}</td>`).join('')}<td><button class="d" onclick="del('days','${d.id}')">✕</button></td></tr>`).join('')||'<tr><td class="muted">Nenhum dia registrado neste período.</td></tr>'}</table></div></div>`}
+function metas(){const c=S.cfg;
+  return`<div class="card"><h2>Dívidas e objetivos</h2><form onsubmit="addGoal(event)"><label>Nome<input name="n" required></label><label>Tipo<select name="t"><option value="div">Quitar dívida</option><option value="obj">Comprar / juntar</option></select></label><label>Valor total<input name="v" type="number" step=".01" required></label><label>Já tenho<input name="s" type="number" step=".01" value="0"></label><button class="p">Criar meta</button></form></div>
+  ${S.goals.map(g=>{const rest=Math.max(0,g.v-g.s),pc=Math.min(100,g.s/g.v*100),tc=Math.ceil(g.v/c.ride),fc=Math.min(tc,Math.floor(g.s/c.ride));
+  return`<div class="card"><h3>${g.t==='div'?'💳':'🎯'} ${esc(g.n)}</h3><div class="bar"><i style="width:${pc}%"></i></div>
+  <p>${brl(g.s)} de ${brl(g.v)} (${pc.toFixed(0)}%) — faltam <b>${brl(rest)}</b></p>
+  <p>Corridas: <b>${fc} feitas × ${tc-fc} a fazer</b> (total ${tc}) · ≈ <b>${hm(rest/c.hour)}</b> de trabalho</p>
+  <form onsubmit="aporte(event,'${g.id}')"><label>Adicionar valor<input name="a" type="number" step=".01" required></label><button class="p">Aportar</button><button type="button" class="d" onclick="del('goals','${g.id}')">Excluir</button></form></div>`}).join('')||'<p class="muted">Nenhuma meta ainda.</p>'}`}
+function config(){const c=S.cfg,f=(k,l)=>`<label>${l}<input type="number" step=".01" value="${c[k]}" onchange="S.cfg.${k}=+this.value;save();render()"></label>`;
+  const ed=(id,f,n)=>`onchange="ed('rec','${id}','${f}',${n?'+':''}this.value)"`;
+  return`<div class="card"><h2>Parâmetros</h2><div class="grid">${f('ride','Valor médio por corrida (R$)')}${f('hour','Ganho por hora (R$)')}${f('rph','Corridas por hora')}</div></div>
+  <div class="card"><h2>Despesas recorrentes (por semana)</h2><p class="muted">Usadas pelo botão "Gerar despesas recorrentes". Ex.: combustível 5 vezes, mercado 2 vezes.</p>
+  <div class="wrap"><table><tr><th>Descrição</th><th>Valor unit.</th><th>Qtd/sem.</th><th>Prioridade</th><th>Tipo</th><th></th></tr>
+  ${S.rec.map(r=>`<tr><td><input value="${esc(r.d)}" ${ed(r.id,'d')}></td><td><input type="number" step=".01" value="${r.unit}" ${ed(r.id,'unit',1)}></td><td><input type="number" min="1" value="${r.qty}" ${ed(r.id,'qty',1)}></td><td><select ${ed(r.id,'prio',1)}>${opt(PRIO,r.prio)}</select></td><td><select ${ed(r.id,'t')}>${opt(TIPOS,r.t)}</select></td><td><button class="d" onclick="del('rec','${r.id}')">✕</button></td></tr>`).join('')}</table></div>
+  <p><button onclick="S.rec.push({id:uid(),d:'Nova despesa',unit:0,qty:1,prio:3,t:'var'});save();render()">+ Adicionar recorrente</button></p></div>
+  <div class="card"><h2>Backup</h2><p class="muted">Com a sincronização ativa os dados ficam na nuvem. O arquivo JSON é um backup extra e serve para restaurar.</p>
+  <button class="p" onclick="exportar()">Baixar backup (.json)</button> <input type="file" accept=".json" onchange="importar(this)"></div>
+  <div class="card"><button class="d" onclick="if(confirm('Apagar TODOS os dados?')){S=norm(null);save();render()}">Apagar todos os dados</button></div>`}
+// ===== ações =====
+function ed(k,id,f,v){S[k].find(x=>x.id===id)[f]=v;save();render()}
+function del(k,id){if(!confirm('Excluir?'))return;S[k]=S[k].filter(x=>x.id!==id);save();render()}
+const fd=e=>{e.preventDefault();return Object.fromEntries(new FormData(e.target))};
+function addExp(e){const f=fd(e);S.exp.push({id:uid(),d:f.d,unit:+f.v,qty:+f.q||1,prio:+f.p,week:+f.w,t:f.t,due:f.l,month:M,paid:false});save();render()}
+function addDay(e){const f=fd(e),n=k=>+f[k]||0,o={id:uid(),...f};
+  ['rides','val','hours','c99','cu','cp','v99','vu','vp','uon','km'].forEach(k=>o[k]=n(k));
+  if(!o.rides)o.rides=o.c99+o.cu+o.cp;if(!o.val)o.val=o.v99+o.vu+o.vp;
+  if(!o.hours&&f.start&&f.end){const[a,b]=[f.start,f.end].map(t=>+t.slice(0,2)+t.slice(3)/60);o.hours=+(b>=a?b-a:b+24-a).toFixed(2)}
+  S.days.push(o);save();render()}
+function addGoal(e){const f=fd(e);S.goals.push({id:uid(),n:f.n,t:f.t,v:+f.v,s:+f.s||0});save();render()}
+function aporte(e,id){S.goals.find(g=>g.id===id).s+=+fd(e).a;save();render()}
+function gerar(){let n=0;weeks(M).forEach(w=>S.rec.forEach(r=>{if(S.exp.some(e=>e.month===M&&e.week===w.n&&e.recId===r.id))return;
+  S.exp.push({id:uid(),recId:r.id,d:r.d,unit:r.unit,qty:r.qty,prio:r.prio,t:r.t,week:w.n,due:'',month:M,paid:false});n++}));save();render()}
+function exportar(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));a.download='backup-metas-'+today()+'.json';a.click()}
+function importar(i){const r=new FileReader();r.onload=()=>{try{const d=norm(JSON.parse(r.result));
+  if(confirm('Substituir os dados atuais (e a nuvem) pelo backup?')){S=d;save();render()}}catch(e){alert('Arquivo inválido.')}};r.readAsText(i.files[0])}
+function render(){
+  if(!MODE)return loginView();
+  const v={painel,despesas,diario,metas,config}[tab]();
+  $('#app').innerHTML=`<header><h1>Metas de Corridas</h1><span><span id="st" class="muted" style="color:#cfd8d4"></span> <input type="month" value="${M}" onchange="M=this.value;localStorage.m99_month=M;wk=0;render()"> <button onclick="logout()">Sair</button></span></header>
+  <nav>${[['painel','Painel'],['despesas','Despesas'],['diario','Diário'],['metas','Dívidas e metas'],['config','Config e backup']].map(([k,l])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';render()">${l}</button>`).join('')}</nav><main>${v}</main>`;
+  setSt(MODE==='cloud'?st==='local'?'ok':st:'local');if(tab==='painel')sim()}
+render();
+if(MODE==='cloud')pull().then(render).catch(e=>e===401?logout():setSt('err'));
+</script>
+</body>
+</html>
